@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package playground;
+
+option go_package = "github.com/Dieg657/kafka-toolkit-lib/playground/protobuf_example;protobuf_example";
+
+message ProtoPayload {
+  string field1 = 1;
+  int32 field2 = 2;
+} 
