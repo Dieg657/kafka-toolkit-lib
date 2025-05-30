@@ -1,0 +1,9 @@
+{
+  "type": "record",
+  "name": "AvroPayload",
+  "namespace": "playground",
+  "fields": [
+    { "name": "field1", "type": "string" },
+    { "name": "field2", "type": "int" }
+  ]
+} 
