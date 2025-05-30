@@ -40,7 +40,7 @@ O Kafka está configurado para criar tópicos automaticamente quando são acessa
 # Para Unix/Linux/MacOS
 export KAFKA_BROKERS=localhost:29093
 export KAFKA_SCHEMA_REGISTRY_URL=http://localhost:8081
-export KAFKA_SECURITY_PROTOCOL=plaintext
+export KAFKA_SECURITY_PROTOCOL=PLAINTEXT
 export KAFKA_SASL_MECHANISM=PLAIN
 export KAFKA_SCHEMA_REGISTRY_USERNAME=schema-registry
 export KAFKA_SCHEMA_REGISTRY_PASSWORD=schema-registry-password
@@ -48,7 +48,7 @@ export KAFKA_SCHEMA_REGISTRY_PASSWORD=schema-registry-password
 # Para Windows (PowerShell)
 $env:KAFKA_BROKERS="localhost:29093"
 $env:KAFKA_SCHEMA_REGISTRY_URL="http://localhost:8081"
-$env:KAFKA_SECURITY_PROTOCOL="plaintext"
+$env:KAFKA_SECURITY_PROTOCOL="PLAINTEXT"
 $env:KAFKA_SASL_MECHANISM="PLAIN"
 $env:KAFKA_SCHEMA_REGISTRY_USERNAME="schema-registry"
 $env:KAFKA_SCHEMA_REGISTRY_PASSWORD="schema-registry-password"
@@ -76,7 +76,7 @@ Isto iniciará:
 # Para Unix/Linux/MacOS
 export KAFKA_BROKERS=localhost:29093
 export KAFKA_SCHEMA_REGISTRY_URL=http://localhost:8081
-export KAFKA_SECURITY_PROTOCOL=sasl_plaintext
+export KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
 export KAFKA_SASL_MECHANISM=PLAIN
 export KAFKA_USERNAME=admin
 export KAFKA_PASSWORD=admin-secret
@@ -86,7 +86,7 @@ export KAFKA_SCHEMA_REGISTRY_PASSWORD=schema-registry-password
 # Para Windows (PowerShell)
 $env:KAFKA_BROKERS="localhost:29093"
 $env:KAFKA_SCHEMA_REGISTRY_URL="http://localhost:8081"
-$env:KAFKA_SECURITY_PROTOCOL="sasl_plaintext"
+$env:KAFKA_SECURITY_PROTOCOL="SASL_PLAINTEXT"
 $env:KAFKA_SASL_MECHANISM="PLAIN"
 $env:KAFKA_USERNAME="admin"
 $env:KAFKA_PASSWORD="admin-secret"
@@ -111,7 +111,7 @@ O playground contém exemplos para os seguintes formatos de serialização:
 - **Avro**: `playground/avro_example/main.go` (requer Schema Registry)
 - **Protobuf**: `playground/protobuf_example/main.go` (requer Schema Registry)
 - **JSON Schema**: `playground/json_schema_example/main.go` (requer Schema Registry)
-- **JSON Puro**: `playground/json_pure_example/main.go`
+- **JSON**: `playground/json_example/main.go`
 
 **Importante**: Os formatos Avro, Protobuf e JSON Schema **requerem** o Schema Registry em funcionamento, pois utilizam-no para registro e validação de schemas. Apenas o formato JSON Puro pode funcionar sem Schema Registry.
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"strings"
 	"syscall"
 
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
@@ -15,6 +16,7 @@ import (
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/setup"
+	"github.com/Dieg657/kafka-toolkit-lib/internal/engine/adapter"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/google/uuid"
 )
@@ -26,12 +28,30 @@ import (
 // KafkaConsumer encapsula um consumidor Kafka fortemente tipado.
 // Gerencia a conexão com o Kafka e deserialização de mensagens.
 type kafkaConsumer[TData any] struct {
-	ctx             context.Context
-	client          *kafka.Consumer
-	registry        setup.ISchemaRegistrySetup
-	deserializerMap map[enums.Deserialization]func(topic string, payload []byte, data *TData) error
-	protobufAdapter *ProtobufAdapter // Adaptador para mensagens protobuf
+	ctx              context.Context
+	client           *kafka.Consumer
+	priority         enums.ConsumerOrderPriority
+	registry         setup.ISchemaRegistrySetup
+	deserializerMap  map[enums.Deserialization]func(topic string, payload []byte, data *TData) error
+	protobufAdapter  *adapter.ProtobufAdapter
+	consumerPriority enums.ConsumerOrderPriority
 }
+
+var (
+	deserializationStrategyMap = map[enums.DeserializationStrategy]func(err error){
+		enums.OnDeserializationFailedStopHost: func(err error) {
+			if err != nil {
+				fmt.Printf("Error on deserialize message: %s\n", err)
+				panic(err)
+			}
+		},
+		enums.OnDeserializationIgnoreMessage: func(err error) {
+			if err != nil {
+				fmt.Printf("Error on deserialize message: %s\n", err)
+			}
+		},
+	}
+)
 
 // ==========================================================================
 // Construtores
@@ -55,8 +75,12 @@ func NewKafkaConsumer[TData any](ctx context.Context) (IKafkaConsumer[TData], er
 	consumer := &kafkaConsumer[TData]{}
 	consumer.ctx = ctx
 	consumer.client = consumerSetup.GetKafkaConsumer()
+	consumer.priority = container.GetConsumerPriority()
 	consumer.registry = schemaRegistry
-	consumer.protobufAdapter = NewProtobufAdapter() // Inicializa o adaptador protobuf
+	consumer.protobufAdapter = adapter.NewProtobufAdapter() // Inicializa o adaptador protobuf
+
+	// Obtém a prioridade do consumidor
+	consumer.consumerPriority = container.GetConsumerPriority()
 
 	// Inicializa os deserializadores suportados
 	consumer.initializeDeserializers()
@@ -72,13 +96,16 @@ func NewKafkaConsumer[TData any](ctx context.Context) (IKafkaConsumer[TData], er
 // Deserializa as mensagens com o formato especificado e chama o handler para cada uma delas.
 //
 // Parâmetros:
+//   - parallelWorkers: Número de workers paralelos para consumir mensagens
+//   - batchSize: Tamanho do lote de mensagens a ser consumido
 //   - topic: Nome do tópico Kafka para consumo
 //   - deserialization: Formato de deserialização a ser usado
+//   - strategy: Estratégia de tratamento de erro de deserialização
 //   - handler: Função a ser chamada para cada mensagem consumida
 //
 // Retorno:
 //   - error: Erro caso ocorra falha no consumo
-func (c *kafkaConsumer[TData]) Consume(topic string, deserialization enums.Deserialization, handler func(message message.Message[TData]) error) error {
+func (c *kafkaConsumer[TData]) Consume(topic string, deserialization enums.Deserialization, strategy enums.DeserializationStrategy, handler func(message message.Message[TData]) error) error {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -103,24 +130,23 @@ func (c *kafkaConsumer[TData]) Consume(topic string, deserialization enums.Deser
 			if ev == nil {
 				continue
 			}
-
 			switch e := ev.(type) {
 			case *kafka.Message:
 				baseMessage := message.Message[TData]{
 					Metadata: make(map[string][]byte, len(e.Headers)),
 				}
-				c.fillHeader(&baseMessage, e)
+				c.fillHeader(&baseMessage, e.Headers)
 
 				err = c.deserializeValue(e, deserialization, &baseMessage.Data)
-				if err != nil {
-					fmt.Printf("Failed on deserialize message: %s\n", err)
-					continue
-				}
+				deserializationStrategyMap[strategy](err)
 
-				fmt.Printf("Message on %s:\n", e.TopicPartition)
 				err = handler(baseMessage)
 				if err != nil {
 					fmt.Println("Error on handle message")
+				}
+
+				if c.priority == enums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE || c.priority == enums.CONSUMER_ORDER_PRIORITY_RISKY {
+					continue
 				}
 
 				err = commitMessage(c.client, e.TopicPartition)
@@ -166,8 +192,6 @@ func (c *kafkaConsumer[TData]) initializeDeserializers() {
 				return nil
 			}
 
-			// Se falhar, usa nossa abordagem mais flexível
-
 			// Obtém o tipo do dado TData
 			dataType := reflect.TypeOf(*data).Elem()
 
@@ -202,11 +226,11 @@ func (c *kafkaConsumer[TData]) deserializeValue(e *kafka.Message, deserializatio
 
 // fillHeader preenche os metadados da mensagem com base nos cabeçalhos Kafka.
 // Extrai também o correlationId, se disponível.
-func (c *kafkaConsumer[TData]) fillHeader(message *message.Message[TData], e *kafka.Message) {
-	for _, header := range e.Headers {
+func (c *kafkaConsumer[TData]) fillHeader(message *message.Message[TData], headers []kafka.Header) {
+	for _, header := range headers {
 		message.Metadata[header.Key] = header.Value
 
-		if header.Key == "correlationId" {
+		if strings.ToUpper(header.Key) == "CORRELATIONID" {
 			correlationID, err := uuid.ParseBytes(header.Value)
 			if err == nil {
 				message.CorrelationId = correlationID
@@ -219,36 +243,25 @@ func (c *kafkaConsumer[TData]) fillHeader(message *message.Message[TData], e *ka
 	}
 }
 
-// rebalanceCallback é chamado pelo cliente Kafka quando ocorre um rebalanceamento de partições.
+// Callback do cliente Kafka que recebe eventos de atribuição/revogação de partições.
 // Gerencia atribuição e revogação de partições durante o rebalanceamento.
 func rebalanceCallback(c *kafka.Consumer, event kafka.Event) error {
 	switch ev := event.(type) {
 	case kafka.AssignedPartitions:
-		fmt.Printf("%s rebalance: %d new partition(s) assigned: %v\n",
+		fmt.Printf("Rebalance Protocol: %s rebalance: %d new partition(s) assigned: %v\n",
 			c.GetRebalanceProtocol(), len(ev.Partitions), ev.Partitions)
-
 		err := c.Assign(ev.Partitions)
 		if err != nil {
 			return err
 		}
-
 	case kafka.RevokedPartitions:
-		fmt.Printf("%s rebalance: %d partition(s) revoked: %v\n",
+		fmt.Printf("Rebalance Protocol: %s rebalance: %d partition(s) revoked: %v\n",
 			c.GetRebalanceProtocol(), len(ev.Partitions), ev.Partitions)
-
 		if c.AssignmentLost() {
 			fmt.Fprintln(os.Stderr, "Assignment lost involuntarily, commit may fail")
 		}
-
-		_, err := c.Commit()
-
-		if err != nil && err.(kafka.Error).Code() != kafka.ErrNoOffset {
-			fmt.Fprintf(os.Stderr, "Failed to commit offsets: %s\n", err)
-			return err
-		}
-
 	default:
-		fmt.Fprintf(os.Stderr, "Unxpected event type: %v\n", event)
+		fmt.Fprintf(os.Stderr, "Rebalance Protocol: %s Unxpected event type: %v\n", c.GetRebalanceProtocol(), event)
 	}
 
 	return nil

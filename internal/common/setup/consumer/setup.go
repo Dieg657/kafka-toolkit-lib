@@ -7,7 +7,6 @@ import (
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/setup"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/spf13/viper"
 )
 
 // ==========================================================================
@@ -72,7 +71,7 @@ var consumerPriorityConfigs = map[enums.ConsumerOrderPriority]func(*kafka.Config
 	},
 	enums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE: func(configMap *kafka.ConfigMap) {
 		// Configurações para alto throughput
-		configMap.SetKey("enable.auto.commit", "true")          // Commit automático para velocidade
+		configMap.SetKey("enable.auto.commit", "true")          // Commit automático
 		configMap.SetKey("auto.commit.interval.ms", 5000)       // 5 s intervalo de commit
 		configMap.SetKey("auto.offset.reset", "latest")         // Começa de mensagens mais recentes
 		configMap.SetKey("max.partition.fetch.bytes", 10485760) // 10 MB por partição
@@ -128,23 +127,20 @@ func (cs *kafkaConsumerSetup) New(options config.IKafkaOptions) error {
 		return err
 	}
 
-	// Determinar a prioridade do consumidor
-	consumerPriority := determineConsumerPriority(options)
-
 	// Configuração base do consumidor
 	configMap := &kafka.ConfigMap{
 		"bootstrap.servers": options.GetBrokers(),
 		"group.id":          options.GetGroupId(),
 		"client.id":         hostname,
 		"security.protocol": options.GetSecurityProtocol(),
-		"sasl.mechanism":    options.GetSaslMechanism(),
+		"sasl.mechanism":    options.GetSaslMechanisms(),
 		"sasl.username":     options.GetUserName(),
 		"sasl.password":     options.GetPassword(),
 		"auto.offset.reset": options.GetOffset(),
 	}
 
 	// Aplicar configurações específicas da prioridade escolhida
-	applyConsumerPriorityConfig(consumerPriority, configMap)
+	setConsumerOrderPriority(enums.ConsumerOrderPriority(options.GetConsumerPriority()), configMap)
 
 	// Criar o consumidor Kafka
 	consumer, err := kafka.NewConsumer(configMap)
@@ -156,31 +152,8 @@ func (cs *kafkaConsumerSetup) New(options config.IKafkaOptions) error {
 	return nil
 }
 
-// determineConsumerPriority determina a prioridade do consumidor com base nas opções ou variáveis de ambiente
-func determineConsumerPriority(options config.IKafkaOptions) enums.ConsumerOrderPriority {
-	viper.AutomaticEnv()
-	priorityStr := options.GetConsumerPriority()
-	var consumerPriority enums.ConsumerOrderPriority
-
-	if priorityStr != "" {
-		consumerPriority = enums.ConsumerOrderPriority(priorityStr)
-	} else {
-		consumerPriority = enums.ConsumerOrderPriority(viper.GetString("KAFKA_CONSUMER_PRIORITY"))
-	}
-
-	// Validation
-	if consumerPriority == "" || (consumerPriority != enums.CONSUMER_ORDER_PRIORITY_ORDER &&
-		consumerPriority != enums.CONSUMER_ORDER_PRIORITY_BALANCED &&
-		consumerPriority != enums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE &&
-		consumerPriority != enums.CONSUMER_ORDER_PRIORITY_RISKY) {
-		consumerPriority = enums.CONSUMER_ORDER_PRIORITY_BALANCED
-	}
-
-	return consumerPriority
-}
-
-// applyConsumerPriorityConfig aplica as configurações de prioridade ao ConfigMap
-func applyConsumerPriorityConfig(priority enums.ConsumerOrderPriority, configMap *kafka.ConfigMap) {
+// setConsumerOrderPriority aplica as configurações de prioridade ao ConfigMap
+func setConsumerOrderPriority(priority enums.ConsumerOrderPriority, configMap *kafka.ConfigMap) {
 	if configFunc, exists := consumerPriorityConfigs[priority]; exists {
 		configFunc(configMap)
 	}

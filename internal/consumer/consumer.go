@@ -32,25 +32,46 @@ var consumerRegistry sync.Map
 // ConsumeMessage implementa o método da interface IConsumer
 // Recebe um tópico e formato, criando ou reutilizando um consumidor existente
 // para o par tipo+tópico, e inicia o consumo de mensagens.
-func ConsumeMessage[TData any](ctx context.Context, topic string, format enums.Deserialization, handler func(message message.Message[TData]) error) error {
+func ConsumeMessage[TData any](ctx context.Context, topic string, format enums.Deserialization, strategy enums.DeserializationStrategy, handler func(message message.Message[TData]) error) error {
+	engineConsumer, err := getEngineConsumer[TData](ctx, topic)
+	if err != nil {
+		return fmt.Errorf("falha ao preparar consumidor para tópico %s: %w", topic, err)
+	}
+
+	// Inicia o consumo usando o engine consumer
+	return engineConsumer.Consume(topic, format, strategy, handler)
+}
+
+func ConsumeMessageInParallel[TData any](ctx context.Context, topic string, format enums.Deserialization, strategy enums.DeserializationStrategy, handler func(message message.Message[TData]) error) error {
+	engineConsumer, err := getEngineConsumer[TData](ctx, topic)
+	if err != nil {
+		return fmt.Errorf("falha ao preparar consumidor para tópico %s: %w", topic, err)
+	}
+
+	// Inicia o consumo usando o engine consumer
+	return engineConsumer.Consume(topic, format, strategy, handler)
+}
+
+// ==========================================================================
+// Métodos Privados
+// ==========================================================================
+
+// getEngineConsumer
+func getEngineConsumer[TData any](ctx context.Context, topic string) (engine.IKafkaConsumer[TData], error) {
 	// Gera uma chave única baseada no tipo e tópico
 	key := fmt.Sprintf("%s:%s", getTypeName[TData](), topic)
-
 	// Verifica se já existe um consumer para este par tipo+tópico
 	var consumer *concreteConsumer[TData]
-
 	if existingConsumer, exists := consumerRegistry.Load(key); exists {
 		if typedConsumer, ok := existingConsumer.(*concreteConsumer[TData]); ok {
 			consumer = typedConsumer
 		}
 	}
-
 	// Se não existe, cria um novo
 	if consumer == nil {
 		consumer = &concreteConsumer[TData]{
 			ctx: ctx,
 		}
-
 		// Armazena o consumidor no registro global, garantindo concorrência segura
 		actualConsumer, loaded := consumerRegistry.LoadOrStore(key, consumer)
 		if loaded {
@@ -60,20 +81,11 @@ func ConsumeMessage[TData any](ctx context.Context, topic string, format enums.D
 			}
 		}
 	}
-
 	// Obtém ou cria um engine.Consumer específico para este tópico
 	engineConsumer, err := consumer.getOrCreateConsumer(topic)
-	if err != nil {
-		return fmt.Errorf("falha ao preparar consumidor para tópico %s: %w", topic, err)
-	}
 
-	// Inicia o consumo usando o engine consumer
-	return engineConsumer.Consume(topic, format, handler)
+	return engineConsumer, err
 }
-
-// ==========================================================================
-// Métodos Privados
-// ==========================================================================
 
 // getOrCreateConsumer obtém ou cria um consumidor específico para um tópico
 func (c *concreteConsumer[TData]) getOrCreateConsumer(topic string) (engine.IKafkaConsumer[TData], error) {

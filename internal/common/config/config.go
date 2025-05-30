@@ -4,6 +4,10 @@ import (
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
 )
 
+// ==========================================================================
+// Tipos
+// ==========================================================================
+
 // kafkaOptions implementa a interface IKafkaOptions
 type kafkaOptions struct {
 	Brokers          string
@@ -12,7 +16,7 @@ type kafkaOptions struct {
 	UserName         string
 	Password         string
 	SecurityProtocol enums.SecurityProtocol
-	SaslMechanism    enums.SaslMechanims
+	SaslMechanisms   enums.SaslMechanisms
 	SchemaRegistry   ISchemaRegistryOptions
 	RequestTimeout   int
 	ProducerPriority enums.ProducerOrderPriority
@@ -22,20 +26,35 @@ type kafkaOptions struct {
 
 // SchemaRegistryOptions implementa a interface ISchemaRegistryOptions
 type schemaRegistryOptions struct {
-	Url                        string
-	BasicAuthUser              string
-	BasicAuthSecret            string
-	AutoRegisterSchemas        bool
-	RequestTimeout             int
-	BasicAuthCredentialsSource enums.BasicAuthCredentialsSource
+	url                        string
+	basicAuthUser              string
+	basicAuthSecret            string
+	autoRegisterSchemas        bool
+	requestTimeout             int
+	basicAuthCredentialsSource enums.BasicAuthCredentialsSource
 	build                      bool
 }
 
+// ==========================================================================
+// Construtores
+// ==========================================================================
+
+// NewKafkaOptions cria uma nova instância de configurações do Kafka
 func NewKafkaOptions() *kafkaOptions {
 	options := &kafkaOptions{}
 	options.build = false
 	return options
 }
+
+// NewSchemaRegistryOptions cria uma nova instância de configurações do Schema Registry
+func NewSchemaRegistryOptions() *schemaRegistryOptions {
+	options := &schemaRegistryOptions{}
+	return options
+}
+
+// ==========================================================================
+// Métodos KafkaOptions (Setters)
+// ==========================================================================
 
 func (k *kafkaOptions) SetBrokers(brokers string) {
 	k.Brokers = brokers
@@ -61,8 +80,8 @@ func (k *kafkaOptions) SetSecurityProtocol(securityProtocol enums.SecurityProtoc
 	k.SecurityProtocol = securityProtocol
 }
 
-func (k *kafkaOptions) SetSaslMechanism(saslMechanism enums.SaslMechanims) {
-	k.SaslMechanism = saslMechanism
+func (k *kafkaOptions) SetSaslMechanisms(saslMechanisms enums.SaslMechanisms) {
+	k.SaslMechanisms = saslMechanisms
 }
 
 func (k *kafkaOptions) SetSchemaRegistry(schemaRegistry ISchemaRegistryOptions) {
@@ -81,6 +100,11 @@ func (k *kafkaOptions) SetConsumerPriority(consumerPriority enums.ConsumerOrderP
 	k.ConsumerPriority = consumerPriority
 }
 
+// ==========================================================================
+// Métodos KafkaOptions (Getters e validação)
+// ==========================================================================
+
+// Validate verifica se todos os campos obrigatórios foram configurados
 func (k *kafkaOptions) Validate() {
 	if k.build {
 		return
@@ -110,32 +134,12 @@ func (k *kafkaOptions) Validate() {
 		panic("SecurityProtocol is required")
 	}
 
-	if k.SaslMechanism == "" {
-		panic("SaslMechanism is required")
-	}
-
-	if k.SchemaRegistry.GetUrl() == "" {
-		panic("SchemaRegistry.Url is required")
-	}
-
-	if k.SchemaRegistry.GetBasicAuthUser() == "" {
-		panic("SchemaRegistry.BasicAuthUser is required")
-	}
-
-	if k.SchemaRegistry.GetBasicAuthSecret() == "" {
-		panic("SchemaRegistry.de is required")
-	}
-
-	if k.SchemaRegistry.GetRequestTimeout() == 0 {
-		panic("SchemaRegistry.RequestTimeout is required")
-	}
-
-	if k.SchemaRegistry.GetBasicAuthCredentialsSource() == "" {
-		panic("SchemaRegistry.BasicAuthCredentialsSource is required")
+	if k.SaslMechanisms == "" {
+		panic("SaslMechanisms is required")
 	}
 
 	if k.RequestTimeout == 0 {
-		panic("RequestTimeout is required")
+		k.RequestTimeout = 5000
 	}
 
 	if k.ProducerPriority == "" {
@@ -161,8 +165,8 @@ func (k *kafkaOptions) GetOffset() string {
 	return string(k.Offset)
 }
 
-func (k *kafkaOptions) GetSaslMechanism() string {
-	return string(k.SaslMechanism)
+func (k *kafkaOptions) GetSaslMechanisms() string {
+	return string(k.SaslMechanisms)
 }
 
 func (k *kafkaOptions) GetSecurityProtocol() string {
@@ -193,91 +197,82 @@ func (k *kafkaOptions) GetSchemaRegistry() ISchemaRegistryOptions {
 	return k.SchemaRegistry
 }
 
-func NewSchemaRegistryOptions() *schemaRegistryOptions {
-	options := &schemaRegistryOptions{}
-	options.BasicAuthCredentialsSource = enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO
-	return options
-}
+// ==========================================================================
+// Métodos SchemaRegistryOptions (Setters)
+// ==========================================================================
 
 func (s *schemaRegistryOptions) SetUrl(url string) {
-	s.Url = url
+	s.url = url
 }
 
 func (s *schemaRegistryOptions) SetBasicAuthUser(basicAuthUser string) {
-	s.BasicAuthUser = basicAuthUser
+	s.basicAuthUser = basicAuthUser
 }
 
 func (s *schemaRegistryOptions) SetAutoRegisterSchemas(autoRegisterSchemas bool) {
-	s.AutoRegisterSchemas = autoRegisterSchemas
+	s.autoRegisterSchemas = autoRegisterSchemas
 }
 
 func (s *schemaRegistryOptions) SetRequestTimeout(requestTimeout int) {
-	s.RequestTimeout = requestTimeout
+	s.requestTimeout = requestTimeout
 }
 
 func (s *schemaRegistryOptions) SetBasicAuthSecret(basicAuthSecret string) {
-	s.BasicAuthSecret = basicAuthSecret
+	s.basicAuthSecret = basicAuthSecret
 }
 
 func (s *schemaRegistryOptions) SetBasicAuthCredentialsSource(basicAuthCredentialsSource enums.BasicAuthCredentialsSource) {
-	s.BasicAuthCredentialsSource = basicAuthCredentialsSource
+	s.basicAuthCredentialsSource = basicAuthCredentialsSource
 }
 
+// ==========================================================================
+// Métodos SchemaRegistryOptions (Getters e validação)
+// ==========================================================================
+
+// Validate verifica se todos os campos obrigatórios foram configurados
 func (s *schemaRegistryOptions) Validate() {
 	if s.build {
 		return
 	}
 
-	if s.Url == "" {
+	// Validação do URL
+	if s.url == "" {
 		panic("Url is required")
 	}
 
-	// Validação condicional para autenticação do Schema Registry
-	if s.BasicAuthCredentialsSource == enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO {
-		// Se a fonte for USER_INFO, as credenciais são obrigatórias
-		if s.BasicAuthUser == "" {
-			panic("BasicAuthUser is required when BasicAuthCredentialsSource is USER_INFO")
-		}
-		if s.BasicAuthSecret == "" {
-			panic("BasicAuthSecret is required when BasicAuthCredentialsSource is USER_INFO")
-		}
-	} else if s.BasicAuthCredentialsSource == enums.BASIC_AUTH_CREDENTIALS_SOURCE_SASL_INHERIT {
-		// Se for SASL_INHERIT, as credenciais SASL do Kafka serão usadas
-		// Não é necessário validar BasicAuthUser e BasicAuthSecret
-	} else if s.BasicAuthCredentialsSource == enums.BASIC_AUTH_CREDENTIALS_SOURCE_NONE {
-		// Se for vazio, não exige autenticação
-	} else {
-		// Valor inválido para BasicAuthCredentialsSource
-		panic("Invalid BasicAuthCredentialsSource")
+	// Validação do BasicAuthUser e BasicAuthSecret
+	if s.basicAuthCredentialsSource != enums.BASIC_AUTH_CREDENTIALS_SOURCE_NONE && s.basicAuthUser == "" && s.basicAuthSecret == "" {
+		panic("BasicAuthUser and BasicAuthSecret are required")
 	}
 
-	if s.RequestTimeout == 0 {
-		panic("RequestTimeout is required")
+	// Validação do timeout
+	if s.requestTimeout == 0 {
+		s.requestTimeout = 5000
 	}
 
 	s.build = true
 }
 
 func (s *schemaRegistryOptions) GetUrl() string {
-	return s.Url
+	return s.url
 }
 
 func (s *schemaRegistryOptions) GetBasicAuthUser() string {
-	return s.BasicAuthUser
+	return s.basicAuthUser
 }
 
 func (s *schemaRegistryOptions) GetBasicAuthSecret() string {
-	return s.BasicAuthSecret
+	return s.basicAuthSecret
 }
 
-func (s *schemaRegistryOptions) GetBasicAuthCredentialsSource() string {
-	return string(s.BasicAuthCredentialsSource)
+func (s *schemaRegistryOptions) GetBasicAuthCredentialsSource() enums.BasicAuthCredentialsSource {
+	return s.basicAuthCredentialsSource
 }
 
 func (s *schemaRegistryOptions) GetAutoRegisterSchemas() bool {
-	return s.AutoRegisterSchemas
+	return s.autoRegisterSchemas
 }
 
 func (s *schemaRegistryOptions) GetRequestTimeout() int {
-	return s.RequestTimeout
+	return s.requestTimeout
 }

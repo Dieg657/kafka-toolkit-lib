@@ -2,10 +2,9 @@ package setup
 
 import (
 	"fmt"
-	"os"
-	"reflect"
 
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/config"
+	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/setup"
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry"
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde"
@@ -15,9 +14,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//
-// Tipos e Estruturas
-//
+// ==========================================================================
+// Tipos e Propriedades
+// ==========================================================================
 
 // schemaRegistrySetup implementação concreta privada
 type schemaRegistrySetup struct {
@@ -29,7 +28,12 @@ type schemaRegistrySetup struct {
 	protobufSerializer       *protobuf.Serializer
 	protobufDeserializer     *protobuf.Deserializer
 	protoTypes               map[string]proto.Message // Registro de tipos protobuf para adaptação
+	err                      error
 }
+
+// ==========================================================================
+// Factory
+// ==========================================================================
 
 // NewSchemaRegistrySetup cria uma nova instância da interface ISchemaRegistrySetup
 func NewSchemaRegistrySetup(options config.IKafkaOptions) (setup.ISchemaRegistrySetup, error) {
@@ -43,9 +47,9 @@ func NewSchemaRegistrySetup(options config.IKafkaOptions) (setup.ISchemaRegistry
 	return registry, nil
 }
 
-//
-// Construtores
-//
+// ==========================================================================
+// Construtores e Inicialização
+// ==========================================================================
 
 // New inicializa a configuração do schema registry com as opções fornecidas.
 //
@@ -61,8 +65,8 @@ func (registry *schemaRegistrySetup) New(options config.IKafkaOptions) error {
 	configuration.RequestTimeoutMs = options.GetSchemaRegistry().GetRequestTimeout()
 	configuration.ConnectionTimeoutMs = 5000
 
-	if string(options.GetSchemaRegistry().GetBasicAuthCredentialsSource()) != "" {
-		configuration.BasicAuthCredentialsSource = options.GetSchemaRegistry().GetBasicAuthCredentialsSource()
+	if options.GetSchemaRegistry().GetBasicAuthCredentialsSource() != enums.BASIC_AUTH_CREDENTIALS_SOURCE_NONE {
+		configuration.BasicAuthCredentialsSource = string(options.GetSchemaRegistry().GetBasicAuthCredentialsSource())
 		configuration.BasicAuthUserInfo = fmt.Sprintf("%s:%s", options.GetSchemaRegistry().GetBasicAuthUser(), options.GetSchemaRegistry().GetBasicAuthSecret())
 	}
 
@@ -76,12 +80,17 @@ func (registry *schemaRegistrySetup) New(options config.IKafkaOptions) error {
 	registry.setSerializers()
 	registry.setDeserializers()
 
+	// Verifica se algum erro ocorreu durante a configuração
+	if registry.err != nil {
+		return registry.err
+	}
+
 	return nil
 }
 
-//
+// ==========================================================================
 // Métodos Públicos
-//
+// ==========================================================================
 
 // GetAvroSerializer retorna o serializador Avro específico.
 func (sc *schemaRegistrySetup) GetAvroSerializer() *avro.SpecificSerializer {
@@ -113,26 +122,26 @@ func (sc *schemaRegistrySetup) GetProtobufDeserializer() *protobuf.Deserializer 
 	return sc.protobufDeserializer
 }
 
-// RegisterProtoType permite que o cliente registre um tipo protobuf a ser usado
-// durante a serialização/deserialização de mensagens.
-func (registry *schemaRegistrySetup) RegisterProtoType(targetType reflect.Type, protoMsgInstance proto.Message) error {
-	if protoMsgInstance == nil {
-		return fmt.Errorf("a instância protobuf não pode ser nula")
-	}
+// // RegisterProtoType permite que o cliente registre um tipo protobuf a ser usado
+// // durante a serialização/deserialização de mensagens.
+// func (registry *schemaRegistrySetup) RegisterProtoType(targetType reflect.Type, protoMsgInstance proto.Message) error {
+// if protoMsgInstance == nil {
+// return fmt.Errorf("a instância protobuf não pode ser nula")
+// }
 
-	registry.protoTypes[targetType.String()] = protoMsgInstance
-	return nil
-}
+// registry.protoTypes[targetType.String()] = protoMsgInstance
+// return nil
+// }
 
-// GetProtoTypeForTarget retorna um tipo protobuf registrado para o tipo de destino especificado
-func (registry *schemaRegistrySetup) GetProtoTypeForTarget(targetType reflect.Type) (proto.Message, bool) {
-	protoType, exists := registry.protoTypes[targetType.String()]
-	return protoType, exists
-}
+// // GetProtoTypeForTarget retorna um tipo protobuf registrado para o tipo de destino especificado
+// func (registry *schemaRegistrySetup) GetProtoTypeForTarget(targetType reflect.Type) (proto.Message, bool) {
+// protoType, exists := registry.protoTypes[targetType.String()]
+// return protoType, exists
+// }
 
-//
+// ==========================================================================
 // Métodos Privados
-//
+// ==========================================================================
 
 // setSerializers inicializa todos os serializadores.
 func (sc *schemaRegistrySetup) setSerializers() {
@@ -153,25 +162,24 @@ func (registry *schemaRegistrySetup) configAvroSerializer() {
 	configSerializer := avro.NewSerializerConfig()
 	configSerializer.AutoRegisterSchemas = true
 
-	avroValueSerializer, errValue := avro.NewSpecificSerializer(registry.schemaRegistry, serde.ValueSerde, configSerializer)
-
-	if errValue != nil {
-		fmt.Println("Error on create AVRO Schema Serializer")
-		os.Exit(-1)
+	avroValueSerializer, err := avro.NewSpecificSerializer(registry.schemaRegistry, serde.ValueSerde, configSerializer)
+	if err != nil {
+		registry.avroSpecificSerializer = nil
+		registry.err = fmt.Errorf("falha ao criar serializador AVRO: %w", err)
+		return
 	}
 
 	registry.avroSpecificSerializer = avroValueSerializer
-	// Não deve retornar nada
 }
 
 // configAvroDeserializer configura o deserializador Avro.
 func (sc *schemaRegistrySetup) configAvroDeserializer() {
 	configDeserializer := avro.NewDeserializerConfig()
-	avroValueDeserializer, errValue := avro.NewSpecificDeserializer(sc.schemaRegistry, serde.ValueSerde, configDeserializer)
-
-	if errValue != nil {
-		fmt.Println("Error on create AVRO Schema Deserializer")
-		os.Exit(-1)
+	avroValueDeserializer, err := avro.NewSpecificDeserializer(sc.schemaRegistry, serde.ValueSerde, configDeserializer)
+	if err != nil {
+		sc.avroSpecificDeserializer = nil
+		sc.err = fmt.Errorf("falha ao criar deserializador AVRO: %w", err)
+		return
 	}
 
 	sc.avroSpecificDeserializer = avroValueDeserializer
@@ -181,11 +189,11 @@ func (sc *schemaRegistrySetup) configAvroDeserializer() {
 func (sc *schemaRegistrySetup) configJsonSerializer() {
 	configSerializer := jsonschema.NewSerializerConfig()
 	configSerializer.AutoRegisterSchemas = true
-	jsonValueSerializer, errValue := jsonschema.NewSerializer(sc.schemaRegistry, serde.ValueSerde, configSerializer)
-
-	if errValue != nil {
-		fmt.Println("Error on create JSON Schema Serializer")
-		os.Exit(-1)
+	jsonValueSerializer, err := jsonschema.NewSerializer(sc.schemaRegistry, serde.ValueSerde, configSerializer)
+	if err != nil {
+		sc.jsonSerializer = nil
+		sc.err = fmt.Errorf("falha ao criar serializador JSON: %w", err)
+		return
 	}
 
 	sc.jsonSerializer = jsonValueSerializer
@@ -194,36 +202,38 @@ func (sc *schemaRegistrySetup) configJsonSerializer() {
 // configJsonDeserializer configura o deserializador JSON.
 func (sc *schemaRegistrySetup) configJsonDeserializer() {
 	configDeserializer := jsonschema.NewDeserializerConfig()
-	jsonValueDeserializer, errValue := jsonschema.NewDeserializer(sc.schemaRegistry, serde.ValueSerde, configDeserializer)
-
-	if errValue != nil {
-		fmt.Println("Error on create JSON Schema Deserializer")
-		os.Exit(-1)
+	jsonValueDeserializer, err := jsonschema.NewDeserializer(sc.schemaRegistry, serde.ValueSerde, configDeserializer)
+	if err != nil {
+		sc.jsonDeserializer = nil
+		sc.err = fmt.Errorf("falha ao criar deserializador JSON: %w", err)
+		return
 	}
 
 	sc.jsonDeserializer = jsonValueDeserializer
 }
 
+// configProtobufSerializer configura o serializador Protobuf.
 func (sc *schemaRegistrySetup) configProtobufSerializer() {
 	configSerializer := protobuf.NewSerializerConfig()
 	configSerializer.AutoRegisterSchemas = true
-	protobufValueSerializer, errValue := protobuf.NewSerializer(sc.schemaRegistry, serde.ValueSerde, configSerializer)
-
-	if errValue != nil {
-		fmt.Println("Error on create Protobuf Schema Serializer")
-		os.Exit(-1)
+	protobufValueSerializer, err := protobuf.NewSerializer(sc.schemaRegistry, serde.ValueSerde, configSerializer)
+	if err != nil {
+		sc.protobufSerializer = nil
+		sc.err = fmt.Errorf("falha ao criar serializador Protobuf: %w", err)
+		return
 	}
 
 	sc.protobufSerializer = protobufValueSerializer
 }
 
+// configProtobufDeserializer configura o deserializador Protobuf.
 func (sc *schemaRegistrySetup) configProtobufDeserializer() {
 	configDeserializer := protobuf.NewDeserializerConfig()
-	protobufValueDeserializer, errValue := protobuf.NewDeserializer(sc.schemaRegistry, serde.ValueSerde, configDeserializer)
-
-	if errValue != nil {
-		fmt.Println("Error on create Protobuf Schema Deserializer")
-		os.Exit(-1)
+	protobufValueDeserializer, err := protobuf.NewDeserializer(sc.schemaRegistry, serde.ValueSerde, configDeserializer)
+	if err != nil {
+		sc.protobufDeserializer = nil
+		sc.err = fmt.Errorf("falha ao criar deserializador Protobuf: %w", err)
+		return
 	}
 
 	sc.protobufDeserializer = protobufValueDeserializer

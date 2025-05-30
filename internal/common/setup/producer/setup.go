@@ -88,12 +88,6 @@ var producerPriorityConfigs = map[enums.ProducerOrderPriority]func(*kafka.Config
 
 func (producerSetup *kafkaProducerSetup) New(options config.IKafkaOptions) error {
 	viper.AutomaticEnv()
-	producerPriority := enums.ProducerOrderPriority(viper.GetString("KAFKA_PRODUCER_PRIORITY"))
-	if producerPriority == "" || (producerPriority != enums.PRODUCER_ORDER_PRIORITY_ORDER &&
-		producerPriority != enums.PRODUCER_ORDER_PRIORITY_BALANCED &&
-		producerPriority != enums.PRODUCER_ORDER_PRIORITY_HIGH_PERFORMANCE) {
-		producerPriority = enums.PRODUCER_ORDER_PRIORITY_BALANCED // Valor padrão
-	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -105,12 +99,12 @@ func (producerSetup *kafkaProducerSetup) New(options config.IKafkaOptions) error
 		"client.id":          hostname,
 		"request.timeout.ms": options.GetRequestTimeout(),
 		"security.protocol":  options.GetSecurityProtocol(),
-		"sasl.mechanism":     options.GetSaslMechanism(),
+		"sasl.mechanism":     options.GetSaslMechanisms(),
 		"sasl.username":      options.GetUserName(),
 		"sasl.password":      options.GetPassword(),
 	}
 
-	setProducerOrderPriority(producerPriority, configMap)
+	setProducerOrderPriority(enums.ProducerOrderPriority(options.GetProducerPriority()), configMap)
 
 	producer, err := kafka.NewProducer(configMap)
 

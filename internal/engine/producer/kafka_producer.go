@@ -11,6 +11,7 @@ import (
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/setup"
+	"github.com/Dieg657/kafka-toolkit-lib/internal/engine/adapter"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
@@ -24,7 +25,7 @@ type kafkaProducer[TData any] struct {
 	client          *kafka.Producer
 	registry        setup.ISchemaRegistrySetup
 	serializers     map[enums.Serialization]func(topic string, payload *TData) ([]byte, error)
-	protobufAdapter *ProtobufAdapter // Adaptador para mensagens protobuf
+	protobufAdapter *adapter.ProtobufAdapter // Adaptador para mensagens protobuf
 }
 
 // ==========================================================================
@@ -49,7 +50,7 @@ func NewKafkaProducer[TData any](ctx context.Context) (IKafkaProducer[TData], er
 	producer := &kafkaProducer[TData]{}
 	producer.client = producerSetup.GetKafkaProducer()
 	producer.registry = schemaRegistry
-	producer.protobufAdapter = NewProtobufAdapter() // Inicializa o adaptador protobuf
+	producer.protobufAdapter = adapter.NewProtobufAdapter() // Inicializa o adaptador protobuf
 
 	// Inicializa os serializadores suportados
 	producer.initializeSerializers()

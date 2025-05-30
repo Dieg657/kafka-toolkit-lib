@@ -1,9 +1,9 @@
 package ioc
 
 import (
-	"context"
-	"errors"
 	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/spf13/viper"
 
@@ -29,11 +29,22 @@ type IContainer interface {
 
 	// GetSchemaRegistry retorna a interface para o schema registry
 	GetSchemaRegistry() setup.ISchemaRegistrySetup
+
+	// GetConsumerPriority retorna a prioridade do consumidor
+	GetConsumerPriority() enums.ConsumerOrderPriority
+
+	// GetProducerPriority retorna a prioridade do produtor
+	GetProducerPriority() enums.ProducerOrderPriority
 }
 
 // ==========================================================================
 // Tipos e Propriedades
 // ==========================================================================
+
+var (
+	once         sync.Once
+	iocContainer IContainer
+)
 
 // kafkaIoC implementação concreta do container de dependências
 // Nota: agora é privado (letra minúscula) para esconder a implementação
@@ -41,14 +52,125 @@ type kafkaIoC struct {
 	consumerSetup       setup.IKafkaConsumerSetup
 	producerSetup       setup.IKafkaProducerSetup
 	schemaRegistrySetup setup.ISchemaRegistrySetup
+	consumerPriority    enums.ConsumerOrderPriority
+	producerPriority    enums.ProducerOrderPriority
+}
+
+// Mapas para normalização dos parâmetros
+var (
+	securityProtocolMap = map[string]string{
+		"PLAINTEXT":      string(enums.SECURITY_PROTOCOL_PLAINTEXT),
+		"SASL_PLAINTEXT": string(enums.SECURITY_PROTOCOL_SASL_PLAINTEXT),
+		"SSL":            string(enums.SECURITY_PROTOCOL_SSL),
+		"SASL_SSL":       string(enums.SECURITY_PROTOCOL_SASL_SSL),
+	}
+	saslMechanismMap = map[string]string{
+		"PLAIN":         string(enums.SASL_MECHANISM_PLAIN),
+		"SCRAM-SHA-256": string(enums.SASL_MECHANISM_SCRAM_SHA256),
+		"SCRAM-SHA-512": string(enums.SASL_MECHANISM_SCRAM_SHA512),
+		"GSSAPI":        string(enums.SASL_MECHANISM_GSSAPI),
+		"OAUTHBEARER":   string(enums.SASL_MECHANISM_OAUTHBEARER),
+		"NONE":          string(enums.SASL_MECHANISM_NONE),
+	}
+	basicAuthCredentialsSourceMap = map[string]enums.BasicAuthCredentialsSource{
+		"USER_INFO":    enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO,
+		"SASL_INHERIT": enums.BASIC_AUTH_CREDENTIALS_SOURCE_SASL_INHERIT,
+		"NONE":         enums.BASIC_AUTH_CREDENTIALS_SOURCE_NONE,
+	}
+	autoOffsetResetMap = map[string]string{
+		"ERROR":     string(enums.OFFSET_RESET_ERROR),
+		"SMALLEST":  string(enums.OFFSET_RESET_SMALLEST),
+		"EARLIEST":  string(enums.OFFSET_RESET_EARLIEST),
+		"BEGINNING": string(enums.OFFSET_RESET_BEGINNING),
+		"LARGEST":   string(enums.OFFSET_RESET_LARGEST),
+		"LATEST":    string(enums.OFFSET_RESET_LATEST),
+		"END":       string(enums.OFFSET_RESET_END),
+	}
+	producerPriorityMap = map[string]string{
+		"ORDER":            string(enums.PRODUCER_ORDER_PRIORITY_ORDER),
+		"BALANCED":         string(enums.PRODUCER_ORDER_PRIORITY_BALANCED),
+		"HIGH_PERFORMANCE": string(enums.PRODUCER_ORDER_PRIORITY_HIGH_PERFORMANCE),
+	}
+	consumerPriorityMap = map[string]string{
+		"ORDER":            string(enums.CONSUMER_ORDER_PRIORITY_ORDER),
+		"BALANCED":         string(enums.CONSUMER_ORDER_PRIORITY_BALANCED),
+		"HIGH_PERFORMANCE": string(enums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE),
+		"RISKY":            string(enums.CONSUMER_ORDER_PRIORITY_RISKY),
+	}
+)
+
+// Função utilitária para mapear security protocol amigável para valor Kafka
+func mapSecurityProtocolToKafka(value string) string {
+	mapped, ok := securityProtocolMap[strings.ToUpper(value)]
+	if ok {
+		return mapped
+	}
+	return string(enums.SECURITY_PROTOCOL_PLAINTEXT)
+}
+
+// Função utilitária para mapear sasl.mechanism amigável para valor Kafka
+func mapSaslMechanismToKafka(value string) string {
+	mapped, ok := saslMechanismMap[strings.ToUpper(value)]
+	if ok {
+		return mapped
+	}
+	return string(enums.SASL_MECHANISM_PLAIN)
+}
+
+// Função utilitária para mapear basicAuthCredentialsSource amigável para valor Kafka
+func mapBasicAuthCredentialsSourceToKafka(value string) enums.BasicAuthCredentialsSource {
+	mapped, ok := basicAuthCredentialsSourceMap[strings.ToUpper(value)]
+	if ok {
+		return mapped
+	}
+	return enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO
+}
+
+// Função utilitária para mapear autoOffsetReset amigável para valor Kafka
+func mapAutoOffsetResetToKafka(value string) string {
+	mapped, ok := autoOffsetResetMap[strings.ToUpper(value)]
+	if ok {
+		return mapped
+	}
+	return string(enums.OFFSET_RESET_LATEST)
+}
+
+// Função utilitária para mapear producerPriority amigável para valor Kafka
+func mapProducerPriorityToKafka(value string) string {
+	mapped, ok := producerPriorityMap[strings.ToUpper(value)]
+	if ok {
+		return mapped
+	}
+	return string(enums.PRODUCER_ORDER_PRIORITY_ORDER)
+}
+
+// Função utilitária para mapear consumerPriority amigável para valor Kafka
+func mapConsumerPriorityToKafka(value string) string {
+	mapped, ok := consumerPriorityMap[strings.ToUpper(value)]
+	if ok {
+		return mapped
+	}
+	return string(enums.CONSUMER_ORDER_PRIORITY_ORDER)
 }
 
 // ==========================================================================
 // Factory
 // ==========================================================================
 
-// NewKafkaIoC cria e retorna uma nova instância de IContainer
-func NewKafkaIoC(ctx context.Context) (IContainer, error) {
+// GetKafkaIoC retorna uma instância única do container de dependências
+func GetKafkaIoC() (IContainer, error) {
+	once.Do(func() {
+		var err error
+		iocContainer, err = newKafkaIoC()
+		if err != nil {
+			panic(err)
+		}
+	})
+	return iocContainer, nil
+}
+
+// newKafkaIoC cria e retorna uma nova instância de IContainer
+func newKafkaIoC() (IContainer, error) {
 	ioc := &kafkaIoC{}
 	err := ioc.initialize()
 	if err != nil {
@@ -64,153 +186,109 @@ func NewKafkaIoC(ctx context.Context) (IContainer, error) {
 func (ioc *kafkaIoC) initialize() error {
 	viper.AutomaticEnv()
 
-	// Obter e validar o offset com valor padrão
+	// Obtem e valida o offset com valor default: LATEST em caso de não ser informado
 	offsetValue := viper.GetString("KAFKA_AUTO_OFFSET_RESET")
-	offset := enums.AutoOffsetReset(offsetValue)
-	if offsetValue == "" || (offset != enums.OFFSET_RESET_EARLIEST &&
-		offset != enums.OFFSET_RESET_LATEST &&
-		offset != enums.OFFSET_RESET_ERROR &&
-		offset != enums.OFFSET_RESET_SMALLEST &&
-		offset != enums.OFFSET_RESET_BEGINNING &&
-		offset != enums.OFFSET_RESET_LARGEST &&
-		offset != enums.OFFSET_RESET_END) {
-		offset = enums.OFFSET_RESET_LATEST // Valor padrão
-	}
+	offset := enums.AutoOffsetReset(mapAutoOffsetResetToKafka(offsetValue))
 
-	// Obtem e valida o mecanismo SASL com valor padrão
+	// Obtem o mecanismo SASL com valor default: PLAIN em caso de não ser informado
 	saslValue := viper.GetString("KAFKA_SASL_MECHANISM")
-	saslMechanism := enums.SaslMechanims(saslValue)
-	if saslValue == "" || (saslMechanism != enums.SASL_MECHANISM_NONE &&
-		saslMechanism != enums.SASL_MECHANISM_GSSAPI &&
-		saslMechanism != enums.SASL_MECHANISM_PLAIN &&
-		saslMechanism != enums.SASL_MECHANISM_SCRAM_SHA256 &&
-		saslMechanism != enums.SASL_MECHANISM_SCRAM_SHA512 &&
-		saslMechanism != enums.SASL_MECHANISM_OAUTHBEARER) {
-		saslMechanism = enums.SASL_MECHANISM_PLAIN // Valor padrão
-	}
+	saslMechanisms := enums.SaslMechanisms(mapSaslMechanismToKafka(saslValue))
 
-	// Obtem e valida o protocolo de segurança com valor padrão
+	// Obtem o protocolo de segurança com valor default: SASL_PLAINTEXT em caso de não ser informado
 	secProtocolValue := viper.GetString("KAFKA_SECURITY_PROTOCOL")
-	securityProtocol := enums.SecurityProtocol(secProtocolValue)
-	if secProtocolValue == "" || (securityProtocol != enums.SECURITY_PROTOCOL_PLAINTEXT &&
-		securityProtocol != enums.SECURITY_PROTOCOL_SASL_PLAINTEXT &&
-		securityProtocol != enums.SECURITY_PROTOCOL_SSL &&
-		securityProtocol != enums.SECURITY_PROTOCOL_SASL_SSL) {
-		securityProtocol = enums.SECURITY_PROTOCOL_SASL_PLAINTEXT // Valor padrão
-	}
+	securityProtocol := enums.SecurityProtocol(mapSecurityProtocolToKafka(secProtocolValue))
 
-	// Obtem e valida a fonte de credenciais com valor padrão
-	authSourceValue := viper.GetString("KAFKA_SCHEMA_REGISTRY_AUTH_SOURCE")
-	authSource := enums.BasicAuthCredentialsSource(authSourceValue)
+	// Configura a prioridade do produtor - Valor default: ORDER em caso de não ser informado
+	producerPriority := enums.ProducerOrderPriority(mapProducerPriorityToKafka(viper.GetString("KAFKA_PRODUCER_PRIORITY")))
 
-	// Verificar username e password do schema registry
-	schemaRegistryUsername := viper.GetString("KAFKA_SCHEMA_REGISTRY_USERNAME")
-	schemaRegistryPassword := viper.GetString("KAFKA_SCHEMA_REGISTRY_PASSWORD")
-
-	// Se não foi especificado um authSource mas foram informadas credenciais,
-	// assume USER_INFO como padrão
-	if authSourceValue == "" && schemaRegistryUsername != "" && schemaRegistryPassword != "" {
-		authSource = enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO
-	} else if authSourceValue == "" || (authSource != enums.BASIC_AUTH_CREDENTIALS_SOURCE_NONE &&
-		authSource != enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO &&
-		authSource != enums.BASIC_AUTH_CREDENTIALS_SOURCE_SASL_INHERIT) {
-		authSource = enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO // Valor padrão
-	}
-
-	// Obtem valores para outros campos com defaults quando necessário
-	brokers := viper.GetString("KAFKA_BROKERS")
-	if brokers == "" {
-		return errors.New("KAFKA_BROKERS is not set")
-	}
-
-	groupId := viper.GetString("KAFKA_GROUPID")
-	if groupId == "" {
-		return errors.New("KAFKA_GROUPID is not set")
-	}
-
-	requestTimeout := viper.GetInt("KAFKA_TIMEOUT")
-	if requestTimeout <= 0 {
-		requestTimeout = 5000 // 5 segundos padrão
-	}
-
-	schemaRegistryUrl := viper.GetString("KAFKA_SCHEMA_REGISTRY_URL")
-	if schemaRegistryUrl == "" {
-		return errors.New("KAFKA_SCHEMA_REGISTRY_URL is not set")
-	}
-
-	// Verificar prioridades
-	producerPriority := enums.ProducerOrderPriority(viper.GetString("KAFKA_PRODUCER_PRIORITY"))
-	if producerPriority == "" || (producerPriority != enums.PRODUCER_ORDER_PRIORITY_ORDER &&
-		producerPriority != enums.PRODUCER_ORDER_PRIORITY_BALANCED &&
-		producerPriority != enums.PRODUCER_ORDER_PRIORITY_HIGH_PERFORMANCE) {
-		producerPriority = enums.PRODUCER_ORDER_PRIORITY_BALANCED // Valor padrão
-	}
-
-	consumerPriority := enums.ConsumerOrderPriority(viper.GetString("KAFKA_CONSUMER_PRIORITY"))
-	if consumerPriority == "" || (consumerPriority != enums.CONSUMER_ORDER_PRIORITY_ORDER &&
-		consumerPriority != enums.CONSUMER_ORDER_PRIORITY_BALANCED &&
-		consumerPriority != enums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE &&
-		consumerPriority != enums.CONSUMER_ORDER_PRIORITY_RISKY) {
-		consumerPriority = enums.CONSUMER_ORDER_PRIORITY_BALANCED // Valor padrão
-	}
+	// Configura a prioridade do consumidor - Valor default: ORDER em caso de não ser informado
+	consumerPriority := enums.ConsumerOrderPriority(mapConsumerPriorityToKafka(viper.GetString("KAFKA_CONSUMER_PRIORITY")))
 
 	schemaRegistryOptions := config.NewSchemaRegistryOptions()
-	schemaRegistryOptions.SetUrl(schemaRegistryUrl)
+	schemaRegistryOptions.SetUrl(viper.GetString("KAFKA_SCHEMA_REGISTRY_URL"))
 
-	// Configurar as credenciais e fonte de autenticação com base nos valores fornecidos
-	if authSource == enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO {
+	// Obtem e define a fonte de credenciais com valor default: USER_INFO em caso de não ser informado
+	authSource := mapBasicAuthCredentialsSourceToKafka(viper.GetString("KAFKA_SCHEMA_REGISTRY_AUTH_SOURCE"))
+	schemaRegistryOptions.SetBasicAuthCredentialsSource(authSource)
+
+	// Configura as credenciais e fonte de autenticação com base nos valores fornecidos
+	if enums.BasicAuthCredentialsSource(schemaRegistryOptions.GetBasicAuthCredentialsSource()) == enums.BASIC_AUTH_CREDENTIALS_SOURCE_USER_INFO {
 		// Se for USER_INFO, usamos as credenciais específicas do Schema Registry
-		schemaRegistryOptions.SetBasicAuthUser(schemaRegistryUsername)
-		schemaRegistryOptions.SetBasicAuthSecret(schemaRegistryPassword)
-	} else if authSource == enums.BASIC_AUTH_CREDENTIALS_SOURCE_SASL_INHERIT {
+		schemaRegistryOptions.SetBasicAuthUser(viper.GetString("KAFKA_SCHEMA_REGISTRY_USERNAME"))
+		schemaRegistryOptions.SetBasicAuthSecret(viper.GetString("KAFKA_SCHEMA_REGISTRY_PASSWORD"))
+	} else if enums.BasicAuthCredentialsSource(schemaRegistryOptions.GetBasicAuthCredentialsSource()) == enums.BASIC_AUTH_CREDENTIALS_SOURCE_SASL_INHERIT {
 		// Se for SASL_INHERIT, usamos as credenciais SASL do Kafka
 		schemaRegistryOptions.SetBasicAuthUser(viper.GetString("KAFKA_USERNAME"))
 		schemaRegistryOptions.SetBasicAuthSecret(viper.GetString("KAFKA_PASSWORD"))
 	}
-	// Se for NONE, não definimos credenciais
 
-	schemaRegistryOptions.SetRequestTimeout(requestTimeout)
-	schemaRegistryOptions.SetBasicAuthCredentialsSource(authSource)
+	// Configura o timeout para requisições com valor default: 5000 em caso de não ser informado
+	schemaRegistryOptions.SetRequestTimeout(viper.GetInt("KAFKA_TIMEOUT"))
+
+	// Valida as configurações
 	schemaRegistryOptions.Validate()
 
 	kafkaOptions := config.NewKafkaOptions()
-	kafkaOptions.SetBrokers(brokers)
-	kafkaOptions.SetGroupId(groupId)
+
+	// Configura os brokers
+	kafkaOptions.SetBrokers(viper.GetString("KAFKA_BROKERS"))
+
+	// Configura o grupo de consumidores
+	kafkaOptions.SetGroupId(viper.GetString("KAFKA_GROUPID"))
+
+	// Configura o offset
 	kafkaOptions.SetOffset(offset)
-	kafkaOptions.SetSaslMechanism(saslMechanism)
+
+	// Configura o mecanismo SASL
+	kafkaOptions.SetSaslMechanisms(saslMechanisms)
+
+	// Configura o protocolo de segurança
 	kafkaOptions.SetSecurityProtocol(securityProtocol)
+
+	// Configura o nome do usuário
 	kafkaOptions.SetUserName(viper.GetString("KAFKA_USERNAME"))
+
+	// Configura a senha do usuário
 	kafkaOptions.SetPassword(viper.GetString("KAFKA_PASSWORD"))
-	kafkaOptions.SetRequestTimeout(requestTimeout)
+
+	// Configura a prioridade do produtor
 	kafkaOptions.SetProducerPriority(producerPriority)
+
+	// Configura a prioridade do consumidor
 	kafkaOptions.SetConsumerPriority(consumerPriority)
+
+	// Configura o schema registry
 	kafkaOptions.SetSchemaRegistry(schemaRegistryOptions)
+
+	// Valida as configurações
 	kafkaOptions.Validate()
 
-	// Usa as funções factory para obter as interfaces
+	// Cria o schema registry
 	schemaRegistry, err := registryModule.NewSchemaRegistrySetup(kafkaOptions)
 	if err != nil {
-		fmt.Println("Error on initialize Schema Registry")
-		return err
+		return fmt.Errorf("falha ao inicializar Schema Registry: %w", err)
 	}
 
 	ioc.schemaRegistrySetup = schemaRegistry
 
+	// Cria o produtor
 	producerSetup, err := producerModule.NewKafkaProducerSetup(kafkaOptions)
 	if err != nil {
-		fmt.Println("Error on Setup Producer")
-		return err
+		return fmt.Errorf("falha ao configurar Producer: %w", err)
 	}
 
 	ioc.producerSetup = producerSetup
 
+	// Cria o consumidor
 	consumerSetup, err := consumerModule.NewKafkaConsumerSetup(kafkaOptions)
 	if err != nil {
-		fmt.Println("Error on Setup Consumer")
-		return err
+		return fmt.Errorf("falha ao configurar Consumer: %w", err)
 	}
 
+	// Atribui as interfaces e prioridades
 	ioc.consumerSetup = consumerSetup
+	ioc.consumerPriority = consumerPriority
+	ioc.producerPriority = producerPriority
 
 	return nil
 }
@@ -219,14 +297,27 @@ func (ioc *kafkaIoC) initialize() error {
 // Métodos Públicos
 // ==========================================================================
 
+// GetConsumer retorna as interfaces para consumer e schema registry
 func (ioc *kafkaIoC) GetConsumer() (setup.IKafkaConsumerSetup, setup.ISchemaRegistrySetup) {
 	return ioc.consumerSetup, ioc.schemaRegistrySetup
 }
 
+// GetProducer retorna as interfaces para producer e schema registry
 func (ioc *kafkaIoC) GetProducer() (setup.IKafkaProducerSetup, setup.ISchemaRegistrySetup) {
 	return ioc.producerSetup, ioc.schemaRegistrySetup
 }
 
+// GetSchemaRegistry retorna a interface para o schema registry
 func (ioc *kafkaIoC) GetSchemaRegistry() setup.ISchemaRegistrySetup {
 	return ioc.schemaRegistrySetup
+}
+
+// GetConsumerPriority retorna a prioridade do consumidor
+func (ioc *kafkaIoC) GetConsumerPriority() enums.ConsumerOrderPriority {
+	return ioc.consumerPriority
+}
+
+// GetProducerPriority retorna a prioridade do produtor
+func (ioc *kafkaIoC) GetProducerPriority() enums.ProducerOrderPriority {
+	return ioc.producerPriority
 }

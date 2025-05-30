@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,13 +15,17 @@ import (
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/consumer"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/publisher"
-	avro "github.com/Dieg657/kafka-toolkit-lib/playground/avro_example/avroschema"
 	"github.com/google/uuid"
 )
 
+type MyPayload struct {
+	Field1 string `json:"field1"`
+	Field2 int    `json:"field2"`
+}
+
 func main() {
 	// Define variáveis de ambiente para o teste
-	_ = os.Setenv("KAFKA_GROUPID", "avro-example-group")
+	_ = os.Setenv("KAFKA_GROUPID", "json-example-group")
 
 	// Cria contexto com cancelamento por sinal
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,30 +47,30 @@ func main() {
 	}
 	ctx = context.WithValue(ctx, constants.IocKey, iocContainer)
 
-	topic := "avro-topic"
+	topic := "json-topic"
 
 	// Publica uma mensagem
 	go func() {
 		time.Sleep(1 * time.Second) // Aguarda um pouco para o consumer estar pronto
-		payload := avro.AvroPayload{Field1: "avro", Field2: 789}
+		payload := MyPayload{Field1: "json-example", Field2: 456}
 		correlationId := uuid.New()
 		msg, _ := message.NewForData(correlationId, payload, nil)
-		err = publisher.PublishMessage(ctx, topic, msg, enums.AvroSerialization)
+		err := publisher.PublishMessage(ctx, topic, msg, enums.JsonSerialization)
 		if err != nil {
 			fmt.Println("Erro ao publicar:", err)
 			cancel()
 			return
 		}
-		fmt.Println("Mensagem publicada com Avro!")
+		fmt.Println("Mensagem publicada com Json!")
 	}()
 
 	// Contador de mensagens recebidas para demonstração
 	messageCount := 0
 
-	// Consome a mensagem
-	handler := func(msg message.Message[avro.AvroPayload]) error {
+	handler := func(msg message.Message[MyPayload]) error {
 		messageCount++
-		fmt.Printf("Mensagem recebida (Avro) #%d: %+v\n", messageCount, msg)
+		b, _ := json.MarshalIndent(msg, "", "  ")
+		fmt.Printf("Mensagem recebida (Json) #%d: %s\n", messageCount, b)
 
 		// Para demonstração, termina após receber uma mensagem
 		// Remova esta linha se quiser consumir continuamente
@@ -85,7 +90,7 @@ func main() {
 			fmt.Println("Contexto cancelado, terminando consumer...")
 			return
 		default:
-			err := consumer.ConsumeMessage(ctx, topic, enums.AvroDeserialization, enums.OnDeserializationIgnoreMessage, handler)
+			err := consumer.ConsumeMessage(ctx, topic, enums.JsonDeserialization, enums.OnDeserializationIgnoreMessage, handler)
 			if err != nil {
 				fmt.Println("Erro ao consumir:", err)
 				// Se o contexto foi cancelado, não tenta novamente

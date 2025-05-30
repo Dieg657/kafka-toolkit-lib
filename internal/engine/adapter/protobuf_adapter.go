@@ -1,4 +1,4 @@
-package engine
+package adapter
 
 import (
 	"fmt"
@@ -7,6 +7,10 @@ import (
 
 	"google.golang.org/protobuf/proto"
 )
+
+// ==========================================================================
+// Tipos e Propriedades
+// ==========================================================================
 
 // ProtobufAdapter provê métodos para adaptar entre diferentes implementações de protobuf.
 //
@@ -39,6 +43,10 @@ type ProtobufAdapter struct {
 	autoDetectedTypes sync.Map
 }
 
+// ==========================================================================
+// Construtores
+// ==========================================================================
+
 // NewProtobufAdapter cria uma nova instância do adaptador de protobuf
 func NewProtobufAdapter() *ProtobufAdapter {
 	return &ProtobufAdapter{
@@ -46,6 +54,10 @@ func NewProtobufAdapter() *ProtobufAdapter {
 		autoDetectedTypes: sync.Map{},
 	}
 }
+
+// ==========================================================================
+// Métodos Públicos
+// ==========================================================================
 
 // RegisterProtoType registra um tipo protobuf para ser usado como intermediário
 // na deserialização para um tipo de destino específico.
@@ -65,7 +77,7 @@ func (adapter *ProtobufAdapter) RegisterProtoType(targetType reflect.Type, proto
 // Se não, tenta converter ou retorna um erro explicando o problema.
 //
 // # Incompatibilidade resolvida:
-// Este método é usado durante a publicação, quando o objeto fornecido pelo cliente
+// Este método é usado durante a publicação e consumo, quando o objeto fornecido pelo cliente
 // pode não ser compatível com a implementação protobuf esperada pela biblioteca Confluent.
 func (adapter *ProtobufAdapter) AdaptMessage(obj interface{}) (interface{}, error) {
 	// Verifica se o objeto já implementa a interface proto.Message
@@ -102,83 +114,6 @@ func (adapter *ProtobufAdapter) AdaptMessage(obj interface{}) (interface{}, erro
 	}
 
 	return nil, fmt.Errorf("o objeto não implementa a interface proto.Message necessária para serialização protobuf: %T", obj)
-}
-
-// hasProtobufSignature verifica se um objeto tem métodos que sugerem que é um protobuf.
-//
-// Esta é uma heurística usada para detectar automaticamente objetos protobuf
-// mesmo quando eles não implementam a interface proto.Message específica esperada.
-func (adapter *ProtobufAdapter) hasProtobufSignature(val reflect.Value) bool {
-	// Verifica se o tipo tem métodos como ProtoMessage(), ProtoReflect(), etc.
-	typ := val.Type()
-
-	// Lista de métodos que sugerem uma implementação protobuf
-	protoMethods := []string{"ProtoMessage", "ProtoReflect", "Descriptor", "Reset", "String"}
-
-	methodCount := 0
-	for _, methodName := range protoMethods {
-		if _, exists := typ.MethodByName(methodName); exists {
-			methodCount++
-		}
-	}
-
-	// Se tem pelo menos 3 desses métodos, provavelmente é um protobuf
-	return methodCount >= 3
-}
-
-// convertToProtoMessage tenta converter um objeto para proto.Message.
-//
-// Este método usa reflexão para converter entre diferentes implementações de protobuf,
-// resolvendo a incompatibilidade em tempo de execução.
-func (adapter *ProtobufAdapter) convertToProtoMessage(obj interface{}) (proto.Message, error) {
-	// Usa reflexão para extrair dados do objeto e criar um novo objeto proto.Message
-	// Isso é uma implementação genérica que tenta diferentes abordagens
-
-	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	// Verifica se temos um tipo dinamicamente detectado para este objeto
-	objType := reflect.TypeOf(obj)
-	if cachedType, ok := adapter.autoDetectedTypes.Load(objType.String()); ok {
-		// Cria uma nova instância do tipo detectado
-		protoMsgType := cachedType.(reflect.Type)
-		protoMsgVal := reflect.New(protoMsgType.Elem())
-		protoMsg := protoMsgVal.Interface().(proto.Message)
-
-		// Copia campos usando reflexão
-		adapter.copyStructFields(val, protoMsgVal.Elem())
-
-		return protoMsg, nil
-	}
-
-	// Para implementação completa, precisaríamos de uma forma de criar um novo proto.Message
-	// a partir do zero, o que é difícil sem conhecer o tipo específico
-	return nil, fmt.Errorf("não foi possível converter para proto.Message")
-}
-
-// copyStructFields copia campos de uma struct para outra usando reflexão.
-//
-// Este método é usado para transferir dados entre diferentes implementações
-// de objetos protobuf, mantendo os valores dos campos.
-func (adapter *ProtobufAdapter) copyStructFields(src, dst reflect.Value) {
-	// Certifique-se de que ambos são structs
-	if src.Kind() != reflect.Struct || dst.Kind() != reflect.Struct {
-		return
-	}
-
-	// Para cada campo na struct de destino
-	for i := 0; i < dst.NumField(); i++ {
-		dstField := dst.Field(i)
-		dstFieldName := dst.Type().Field(i).Name
-
-		// Verifica se existe um campo com o mesmo nome na source
-		srcField := src.FieldByName(dstFieldName)
-		if srcField.IsValid() && srcField.Type().AssignableTo(dstField.Type()) {
-			dstField.Set(srcField)
-		}
-	}
 }
 
 // AdaptDeserializedMessage adapta uma mensagem após a deserialização para o tipo esperado.
@@ -301,6 +236,100 @@ func (adapter *ProtobufAdapter) CreateProtoInstance(targetType reflect.Type) (pr
 
 	// Cria uma nova instância do tipo protobuf registrado
 	return reflect.New(protoType.Elem()).Interface().(proto.Message), nil
+}
+
+// GetProtoTypeForTarget retorna um tipo protobuf registrado para o tipo de destino especificado
+func (adapter *ProtobufAdapter) GetProtoTypeForTarget(targetType reflect.Type) (proto.Message, bool) {
+	protoType, exists := adapter.registeredTypes.Load(targetType.String())
+	if !exists {
+		return nil, false
+	}
+
+	// Cria uma nova instância do tipo registrado
+	protoInstance := reflect.New(protoType.(reflect.Type).Elem()).Interface()
+	protoMsg, ok := protoInstance.(proto.Message)
+	return protoMsg, ok
+}
+
+// ==========================================================================
+// Métodos Privados
+// ==========================================================================
+
+// hasProtobufSignature verifica se um objeto tem métodos que sugerem que é um protobuf.
+//
+// Esta é uma heurística usada para detectar automaticamente objetos protobuf
+// mesmo quando eles não implementam a interface proto.Message específica esperada.
+func (adapter *ProtobufAdapter) hasProtobufSignature(val reflect.Value) bool {
+	// Verifica se o tipo tem métodos como ProtoMessage(), ProtoReflect(), etc.
+	typ := val.Type()
+
+	// Lista de métodos que sugerem uma implementação protobuf
+	protoMethods := []string{"ProtoMessage", "ProtoReflect", "Descriptor", "Reset", "String"}
+
+	methodCount := 0
+	for _, methodName := range protoMethods {
+		if _, exists := typ.MethodByName(methodName); exists {
+			methodCount++
+		}
+	}
+
+	// Se tem pelo menos 3 desses métodos, provavelmente é um protobuf
+	return methodCount >= 3
+}
+
+// convertToProtoMessage tenta converter um objeto para proto.Message.
+//
+// Este método usa reflexão para converter entre diferentes implementações de protobuf,
+// resolvendo a incompatibilidade em tempo de execução.
+func (adapter *ProtobufAdapter) convertToProtoMessage(obj interface{}) (proto.Message, error) {
+	// Usa reflexão para extrair dados do objeto e criar um novo objeto proto.Message
+	// Isso é uma implementação genérica que tenta diferentes abordagens
+
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	// Verifica se temos um tipo dinamicamente detectado para este objeto
+	objType := reflect.TypeOf(obj)
+	if cachedType, ok := adapter.autoDetectedTypes.Load(objType.String()); ok {
+		// Cria uma nova instância do tipo detectado
+		protoMsgType := cachedType.(reflect.Type)
+		protoMsgVal := reflect.New(protoMsgType.Elem())
+		protoMsg := protoMsgVal.Interface().(proto.Message)
+
+		// Copia campos usando reflexão
+		adapter.copyStructFields(val, protoMsgVal.Elem())
+
+		return protoMsg, nil
+	}
+
+	// Para implementação completa, precisaríamos de uma forma de criar um novo proto.Message
+	// a partir do zero, o que é difícil sem conhecer o tipo específico
+	return nil, fmt.Errorf("não foi possível converter para proto.Message")
+}
+
+// copyStructFields copia campos de uma struct para outra usando reflexão.
+//
+// Este método é usado para transferir dados entre diferentes implementações
+// de objetos protobuf, mantendo os valores dos campos.
+func (adapter *ProtobufAdapter) copyStructFields(src, dst reflect.Value) {
+	// Certifique-se de que ambos são structs
+	if src.Kind() != reflect.Struct || dst.Kind() != reflect.Struct {
+		return
+	}
+
+	// Para cada campo na struct de destino
+	for i := 0; i < dst.NumField(); i++ {
+		dstField := dst.Field(i)
+		dstFieldName := dst.Type().Field(i).Name
+
+		// Verifica se existe um campo com o mesmo nome na source
+		srcField := src.FieldByName(dstFieldName)
+		if srcField.IsValid() && srcField.Type().AssignableTo(dstField.Type()) {
+			dstField.Set(srcField)
+		}
+	}
 }
 
 // couldBeProtobuf verifica se um tipo poderia ser um tipo protobuf.
