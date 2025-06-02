@@ -148,8 +148,8 @@ A biblioteca realiza verificação automática dos valores informados e faz o ma
 ```go
 import (
     "context"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/ioc"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/constants"
 )
 
 ctx := context.Background()
@@ -163,9 +163,9 @@ ctx = context.WithValue(ctx, constants.IocKey, iocContainer)
 ### 2. Publicando Mensagens
 ```go
 import (
-    "github.com/Dieg657/kafka-toolkit-lib/internal/publisher"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/publisher"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
     "github.com/google/uuid"
 )
 
@@ -186,9 +186,9 @@ if err != nil {
 ### 3. Consumindo Mensagens
 ```go
 import (
-    "github.com/Dieg657/kafka-toolkit-lib/internal/consumer"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/consumer"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
 )
 
 type MyPayload struct {
@@ -360,9 +360,9 @@ Na maioria dos casos, o adaptador funcionará automaticamente sem configuração
 ### Exemplo de Uso com Protobuf
 ```go
 import (
-    "github.com/Dieg657/kafka-toolkit-lib/internal/publisher"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
-    "github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/publisher"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
+    "github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
     "github.com/google/uuid"
     pb "seu/pacote/protobuf"
 )
@@ -1106,12 +1106,12 @@ go test ./...
 
 Para rodar apenas os testes do IoC container:
 ```sh
-go test ./internal/common/ioc
+go test ./pkg/common/ioc
 ```
 
 Para ver o output detalhado:
 ```sh
-go test -v ./internal/common/ioc
+go test -v ./pkg/common/ioc
 ```
 
 > Se algum teste de singleton falhar, isso indica que múltiplas instâncias estão sendo criadas, o que não deve acontecer.
