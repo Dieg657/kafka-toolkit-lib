@@ -8,12 +8,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/consumer"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/publisher"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/constants"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/ioc"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/consumer"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/publisher"
 	avro "github.com/Dieg657/kafka-toolkit-lib/playground/avro_example/avroschema"
 	"github.com/google/uuid"
 )

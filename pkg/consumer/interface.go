@@ -3,8 +3,8 @@ package consumer
 import (
 	"context"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
 )
 
 // ==========================================================================

@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/constants"
 	"github.com/Dieg657/kafka-toolkit-lib/playground/benchmark"
 )
 

@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
 	engine "github.com/Dieg657/kafka-toolkit-lib/internal/engine/consumer"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
 )
 
 // ==========================================================================
