@@ -10,11 +10,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/publisher"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/constants"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/ioc"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/publisher"
 	"github.com/google/uuid"
 )
 

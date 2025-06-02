@@ -11,12 +11,13 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
+	internalEnums "github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/setup"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/engine/adapter"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/constants"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/ioc"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/google/uuid"
 )
@@ -30,11 +31,11 @@ import (
 type kafkaConsumer[TData any] struct {
 	ctx              context.Context
 	client           *kafka.Consumer
-	priority         enums.ConsumerOrderPriority
+	priority         internalEnums.ConsumerOrderPriority
 	registry         setup.ISchemaRegistrySetup
 	deserializerMap  map[enums.Deserialization]func(topic string, payload []byte, data *TData) error
 	protobufAdapter  *adapter.ProtobufAdapter
-	consumerPriority enums.ConsumerOrderPriority
+	consumerPriority internalEnums.ConsumerOrderPriority
 }
 
 var (
@@ -145,7 +146,7 @@ func (c *kafkaConsumer[TData]) Consume(topic string, deserialization enums.Deser
 					fmt.Println("Error on handle message")
 				}
 
-				if c.priority == enums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE || c.priority == enums.CONSUMER_ORDER_PRIORITY_RISKY {
+				if c.priority == internalEnums.CONSUMER_ORDER_PRIORITY_HIGH_PERFORMANCE || c.priority == internalEnums.CONSUMER_ORDER_PRIORITY_RISKY {
 					continue
 				}
 

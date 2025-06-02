@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/constants"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/enums"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/ioc"
-	"github.com/Dieg657/kafka-toolkit-lib/internal/common/message"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/common/setup"
 	"github.com/Dieg657/kafka-toolkit-lib/internal/engine/adapter"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/constants"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/enums"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/ioc"
+	"github.com/Dieg657/kafka-toolkit-lib/pkg/common/message"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
